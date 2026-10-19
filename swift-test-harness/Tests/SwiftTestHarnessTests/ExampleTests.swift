@@ -1,21 +1,22 @@
 #if canImport(Testing)
 import Testing
-import Template
+import UgMetal
 
-@Suite("Template Swift Export Tests")
-struct TemplateExportTests {
-    @Test("Template swift module imported cleanly")
+@Suite("UgMetal Swift Export Tests")
+struct UgMetalExportTests {
+    @Test("UgMetal swift module imported cleanly")
     func testSwiftModuleLoads() throws {
-        #expect(Bool(true), "Template swift module imported cleanly")
+        #expect(Bool(true), "UgMetal swift module imported cleanly")
     }
 }
 #elseif canImport(XCTest)
 import XCTest
-import Template
+import UgMetal
 
-final class TemplateExportTests: XCTestCase {
+final class UgMetalExportTests: XCTestCase {
     func testSwiftModuleLoads() throws {
-        XCTAssertTrue(true, "Template swift module imported cleanly")
+        XCTAssertTrue(true, "UgMetal swift module imported cleanly")
     }
 }
 #endif
+
