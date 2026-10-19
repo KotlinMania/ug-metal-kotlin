@@ -16,3 +16,13 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "ug-metal-kotlin"
+
+listOf(
+    "../half-kotlin",
+    "../ug-kotlin",
+    "../candle-metal-kernels-kotlin",
+).forEach { path ->
+    if (file(path).exists()) {
+        includeBuild(path)
+    }
+}

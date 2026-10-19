@@ -136,6 +136,12 @@ val intellijCoroutinesVersion =
 // dependency population, so keep the default embeddable runner explicit too.
 val projectDependencyHandler = project.dependencies
 configurations.configureEach {
+    // proc-macro-kotlin's published Android artifact bundles the JetBrains
+    // annotation classes, which duplicate org.jetbrains:annotations on the
+    // Android device-test classpath.
+    if (name.contains("androidDeviceTest", ignoreCase = true)) {
+        exclude(group = "org.jetbrains", module = "annotations")
+    }
     if (name == "swiftExportClasspath") {
         dependencies.add(projectDependencyHandler.create("org.jetbrains.kotlin:swift-export-embeddable:$kotlinVersion"))
         dependencies.add(
@@ -335,7 +341,7 @@ fun requestedTaskWantsAndroid(rawTaskName: String): Boolean {
     val taskName = rawTaskName.substringAfterLast(':')
     if (taskName.contains("AndroidNative")) return false // Kotlin/Native, no SDK
     if (taskName.contains("Android")) return true // direct AGP tasks
-    return taskName in setOf("build", "assemble", "check") // aggregates pull android
+    return taskName in setOf("build", "assemble", "check", "test") // aggregates pull android
 }
 
 if (gradle.startParameter.taskNames.any(::requestedTaskWantsAndroid)) {

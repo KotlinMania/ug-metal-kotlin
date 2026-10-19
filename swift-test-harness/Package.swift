@@ -7,18 +7,18 @@ let package = Package(
         .macOS(.v15),
     ],
     dependencies: [
-        .package(name: "Template", path: "../build/SPMPackage/macosArm64/Debug")
+        .package(name: "UgMetal", path: "../build/SPMPackage/macosArm64/Debug")
     ],
     targets: [
         .testTarget(
             name: "SwiftTestHarnessTests",
             dependencies: [
-                .product(name: "TemplateLibrary", package: "Template")
+                .product(name: "UgMetalLibrary", package: "UgMetal")
             ],
             linkerSettings: [
                 .unsafeFlags([
                     "-L", "../build/swift-test",
-                    "-lTemplate",
+                    "-lUgMetal",
                 ]),
             ]
         ),

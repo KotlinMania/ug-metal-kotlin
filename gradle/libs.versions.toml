@@ -9,6 +9,13 @@ detekt = "2.0.0-alpha.6"
 ktlint = "14.2.0"
 ktlintEngine = "1.8.0"
 kotlinxBenchmark = "0.5.0"
+half = "3.0.0"
+serde = "0.1.11"
+thiserror = "0.2.1"
+ug = "0.1.1"
+candleMetalKernels = "0.10.2"
+objc2Metal = "0.3.1"
+objc2Foundation = "0.3.1"
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
@@ -21,17 +28,25 @@ kotlin-allopen = { id = "org.jetbrains.kotlin.plugin.allopen", version.ref = "ko
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
-kotlinx-serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "serialization" }
-kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "datetime" }
 collections-immutable = { module = "org.jetbrains.kotlinx:kotlinx-collections-immutable", version.ref = "collectionsImmutable" }
 kotlinx-benchmark-runtime = { module = "org.jetbrains.kotlinx:kotlinx-benchmark-runtime", version.ref = "kotlinxBenchmark" }
+candle-metal-kernels-kotlin = { module = "io.github.kotlinmania:candle-metal-kernels-kotlin", version.ref = "candleMetalKernels" }
+half-kotlin = { module = "io.github.kotlinmania:half-kotlin", version.ref = "half" }
+thiserror-kotlin = { module = "io.github.kotlinmania:thiserror-kotlin", version.ref = "thiserror" }
+ug-kotlin = { module = "io.github.kotlinmania:ug-kotlin", version.ref = "ug" }
 
 [bundles]
 ugmetal-commonMain = [
   "kotlinx-coroutines-core",
-  "kotlinx-serialization-core",
-  "kotlinx-serialization-json",
   "kotlinx-datetime",
   "collections-immutable",
+  "candle-metal-kernels-kotlin",
+  "half-kotlin",
+  "thiserror-kotlin",
+  "ug-kotlin",
+]
+ugmetal-commonTest = [
+  "kotlinx-coroutines-test",
 ]
