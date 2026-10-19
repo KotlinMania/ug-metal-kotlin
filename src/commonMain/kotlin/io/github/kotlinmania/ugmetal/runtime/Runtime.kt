@@ -15,24 +15,29 @@ import io.github.kotlinmania.candlemetalkernels.metal.Value
 import io.github.kotlinmania.candlemetalkernels.metal.createCommandBuffer
 import io.github.kotlinmania.half.BF16
 import io.github.kotlinmania.half.F16
+import io.github.kotlinmania.ug.BF16Type
 import io.github.kotlinmania.ug.DType
+import io.github.kotlinmania.ug.F16Type
+import io.github.kotlinmania.ug.F32Type
+import io.github.kotlinmania.ug.I32Type
+import io.github.kotlinmania.ug.I64Type
 import io.github.kotlinmania.ug.Layout
 import io.github.kotlinmania.ug.UgError
-import io.github.kotlinmania.ug.WithDType
 import io.github.kotlinmania.ug.lang.LaunchConfig
 import io.github.kotlinmania.ug.lang.ssa.Kernel
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import io.github.kotlinmania.ug.toVec as ugToVec
 import io.github.kotlinmania.ugmetal.codegen.gen as codeGen
 
 private val MLX_GEMM: String = io.github.kotlinmania.candlemetalkernels.MLX_GEMM
 
-public interface WithErr<T> {
+public interface WithErr<out T> {
     public fun w(): T
 }
 
 public fun <T> kotlin.Result<T>.w(): T =
-    getOrElse { throw UgError.Msg(it.message ?: it.toString()) }
+    getOrElse { UgError.Msg(it.message ?: it.toString()).raise() }
 
 public data class KernelId(
     private val value: Int,
@@ -64,7 +69,7 @@ public class Device(
     public val device: io.github.kotlinmania.candlemetalkernels.metal.Device =
         io.github.kotlinmania.candlemetalkernels.metal.Device
             .systemDefault()
-            ?: throw UgError.Msg("no default device found"),
+            ?: UgError.Msg("no default device found").raise(),
     public val cq: CommandQueue = device.newCommandQueue(),
 ) : io.github.kotlinmania.ug.Device {
     public fun newCommandQueue(): CommandQueue = device.newCommandQueue()
@@ -85,74 +90,74 @@ public class Device(
     public inline fun <reified T : Any> zeros(len: Int): SliceT<T> {
         val sizeInBytes =
             when (T::class) {
-                Float::class -> 4
-                Int::class -> 4
-                Long::class -> 8
-                Double::class -> 8
-                Short::class -> 2
+                Float::class, Int::class -> 4
+                Double::class, Long::class -> 8
+                Short::class, F16::class, BF16::class -> 2
                 Byte::class -> 1
-                else -> 4
+                else -> UgError.Msg("unsupported element type: ${T::class}").raise()
             }
         val buffer = device.newBuffer((len * sizeInBytes).toLong(), MTLResourceOptions.StorageModeShared)
-        return SliceT(buffer, len)
+        val reader =
+            SliceReader<T> { bytes, size ->
+                List(size) { index ->
+                    var bits = 0L
+                    for (byte in 0 until sizeInBytes) {
+                        bits = bits or ((bytes[index * sizeInBytes + byte].toLong() and 0xFFL) shl (byte * 8))
+                    }
+                    val value: Any =
+                        when (T::class) {
+                            Float::class -> Float.fromBits(bits.toInt())
+                            Int::class -> bits.toInt()
+                            Long::class -> bits
+                            Double::class -> Double.fromBits(bits)
+                            Short::class -> bits.toShort()
+                            Byte::class -> bits.toByte()
+                            F16::class -> F16.fromBits(bits.toUShort())
+                            BF16::class -> BF16.fromBits(bits.toUShort())
+                            else -> UgError.Msg("unsupported element type: ${T::class}").raise()
+                        }
+                    value as T
+                }
+            }
+        return SliceT(buffer, len, reader)
     }
 
     public inline fun <reified T : Any> sliceFromValues(data: List<T>): SliceT<T> {
-        val len = data.size
-        val sizeInBytes =
-            when (T::class) {
-                Float::class -> 4
-                Int::class -> 4
-                Long::class -> 8
-                Double::class -> 8
-                Short::class -> 2
-                Byte::class -> 1
-                else -> 4
-            }
-        val bytes = ByteArray(len * sizeInBytes)
-        for (i in 0 until len) {
-            val item = data[i]
-            when (item) {
-                is Float -> {
-                    val bits = item.toRawBits()
-                    val off = i * 4
-                    bytes[off] = (bits and 0xFF).toByte()
-                    bytes[off + 1] = ((bits ushr 8) and 0xFF).toByte()
-                    bytes[off + 2] = ((bits ushr 16) and 0xFF).toByte()
-                    bytes[off + 3] = ((bits ushr 24) and 0xFF).toByte()
+        val slice = zeros<T>(data.size)
+        if (data.isEmpty()) return slice
+        val bytes = slice.buffer.data()
+        val sizeInBytes = bytes.size / data.size
+        for ((index, value) in data.withIndex()) {
+            val bits =
+                when (T::class) {
+                    Float::class -> (value as Float).toRawBits().toLong()
+                    Int::class -> (value as Int).toLong()
+                    Long::class -> value as Long
+                    Double::class -> (value as Double).toRawBits()
+                    Short::class -> (value as Short).toLong()
+                    Byte::class -> (value as Byte).toLong()
+                    F16::class -> (value as F16).toBits().toLong()
+                    BF16::class -> (value as BF16).toBits().toLong()
+                    else -> UgError.Msg("unsupported element type: ${T::class}").raise()
                 }
-
-                is Int -> {
-                    val off = i * 4
-                    bytes[off] = (item and 0xFF).toByte()
-                    bytes[off + 1] = ((item ushr 8) and 0xFF).toByte()
-                    bytes[off + 2] = ((item ushr 16) and 0xFF).toByte()
-                    bytes[off + 3] = ((item ushr 24) and 0xFF).toByte()
-                }
-
-                is Long -> {
-                    val off = i * 8
-                    for (b in 0 until 8) {
-                        bytes[off + b] = ((item ushr (b * 8)) and 0xFF).toByte()
-                    }
-                }
+            for (byte in 0 until sizeInBytes) {
+                bytes[index * sizeInBytes + byte] = ((bits ushr (byte * 8)) and 0xFFL).toByte()
             }
         }
-        val buffer = device.newBufferWithData(bytes, bytes.size.toLong(), MTLResourceOptions.StorageModeShared)
-        return SliceT(buffer, len, data)
+        return slice
     }
 
     public fun sliceFromValues(data: FloatArray): SliceT<Float> =
         sliceFromValues(data.toList())
 
     override fun run(f: Any, args: List<io.github.kotlinmania.ug.Slice>) {
-        val func = f as? Func ?: throw UgError.Msg("expected Func")
+        val func = f as? Func ?: UgError.Msg("expected Func").raise()
         val cb = createCommandBuffer(cq)
         val encoder = cb.computeCommandEncoderNoFence()
         val pl = func.pipeline()
         encoder.setComputePipelineState(pl)
         for ((index, arg) in args.withIndex()) {
-            val slice = arg as? Slice ?: throw UgError.Msg("expected Slice")
+            val slice = arg as? Slice ?: UgError.Msg("expected Slice").raise()
             encoder.setInputBuffer(index.toLong(), slice.buffer, 0L)
         }
         val gridSize = MTLSize(func.launchConfig.gridDim.toLong(), 1L, 1L)
@@ -218,9 +223,9 @@ public class Device(
         lhsL: Layout,
         rhsL: Layout,
     ) {
-        val dstSlice = dst as? Slice ?: throw UgError.Msg("expected Slice")
-        val lhsSlice = lhs as? Slice ?: throw UgError.Msg("expected Slice")
-        val rhsSlice = rhs as? Slice ?: throw UgError.Msg("expected Slice")
+        val dstSlice = dst as? Slice ?: UgError.Msg("expected Slice").raise()
+        val lhsSlice = lhs as? Slice ?: UgError.Msg("expected Slice").raise()
+        val rhsSlice = rhs as? Slice ?: UgError.Msg("expected Slice").raise()
         val cb = createCommandBuffer(cq)
         val encoder = cb.computeCommandEncoderNoFence()
         callMlxGemm(
@@ -287,31 +292,18 @@ public class Device(
     }
 }
 
-public class SliceT<T : Any>(
+public fun interface SliceReader<out T : Any> {
+    public fun read(bytes: ByteArray, len: Int): List<T>
+}
+
+public class SliceT<out T : Any>(
     public val buffer: Buffer,
     public val len: Int,
-    private val dataList: List<T>? = null,
+    private val reader: SliceReader<T>,
 ) {
     public fun isEmpty(): Boolean = len == 0
 
-    @Suppress("UNCHECKED_CAST")
-    public fun toVec(): List<T> {
-        if (dataList != null) return dataList
-        val bytes = buffer.data()
-        val floats = FloatArray(len)
-        for (i in 0 until len) {
-            val off = i * 4
-            if (off + 3 < bytes.size) {
-                val bits =
-                    (bytes[off].toInt() and 0xFF) or
-                        ((bytes[off + 1].toInt() and 0xFF) shl 8) or
-                        ((bytes[off + 2].toInt() and 0xFF) shl 16) or
-                        ((bytes[off + 3].toInt() and 0xFF) shl 24)
-                floats[i] = Float.fromBits(bits)
-            }
-        }
-        return floats.toList() as List<T>
-    }
+    public fun toVec(): List<T> = reader.read(buffer.data(), len)
 }
 
 public class Slice(
@@ -449,42 +441,17 @@ public class Slice(
         return arr
     }
 
-    @Suppress("UNCHECKED_CAST")
-    public fun <DT : Any> toVec(withDType: WithDType<DT>): List<DT> =
-        when (dtype) {
-            DType.F32 -> {
-                toFloatArray().toList() as List<DT>
-            }
+    public fun toVec(withDType: F32Type): List<Float> = ugToVec(withDType)
 
-            DType.I32 -> {
-                toIntArray().toList() as List<DT>
-            }
+    public fun toVec(withDType: I32Type): List<Int> = ugToVec(withDType)
 
-            DType.I64 -> {
-                toLongArray().toList() as List<DT>
-            }
+    public fun toVec(withDType: I64Type): List<Long> = ugToVec(withDType)
 
-            DType.F16 -> {
-                val arr = Array(len) { F16.fromFloat(0.0f) }
-                copyDeviceToHost(arr)
-                arr.toList() as List<DT>
-            }
+    public fun toVec(withDType: F16Type): List<F16> = ugToVec(withDType)
 
-            DType.BF16 -> {
-                val arr = Array(len) { BF16.fromFloat(0.0f) }
-                copyDeviceToHost(arr)
-                arr.toList() as List<DT>
-            }
-        }
+    public fun toVec(withDType: BF16Type): List<BF16> = ugToVec(withDType)
 
-    @Suppress("UNCHECKED_CAST")
-    public inline fun <reified DT : Any> toVec(): List<DT> =
-        when (DT::class) {
-            Float::class -> toFloatArray().toList() as List<DT>
-            Int::class -> toIntArray().toList() as List<DT>
-            Long::class -> toLongArray().toList() as List<DT>
-            else -> toFloatArray().toList() as List<DT>
-        }
+    public inline fun <reified DT : Any> toVec(): List<DT> = ugToVec<DT>()
 }
 
 public enum class GemmDType {
@@ -539,7 +506,7 @@ public fun callMlxGemm(
         } else if ((lhsM1 == m || k == 1) && (lhsM2 == 1 || m == 1)) {
             Pair(m, true)
         } else {
-            throw UgError.Msg("matmul striding error $lhsStride $rhsStride $m $n $k")
+            UgError.Msg("matmul striding error $lhsStride $rhsStride $m $n $k").raise()
         }
 
     val (ldb, bTrans) =
@@ -548,7 +515,7 @@ public fun callMlxGemm(
         } else if ((rhsM1 == k || n == 1) && (rhsM2 == 1 || k == 1)) {
             Pair(k, true)
         } else {
-            throw UgError.Msg("matmul striding error $lhsStride $rhsStride $m $n $k")
+            UgError.Msg("matmul striding error $lhsStride $rhsStride $m $n $k").raise()
         }
 
     val bm = 32

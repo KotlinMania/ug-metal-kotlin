@@ -179,7 +179,7 @@ public fun gen(w: Appendable, funcName: String, kernel: Kernel) {
 
             is Instr.EndIf, is Instr.EndRange -> {
                 if (depth == 0) {
-                    throw UgError.Msg("unmatched EndRange")
+                    UgError.Msg("unmatched EndRange").raise()
                 }
                 depth -= 1
                 val indAfter = indent(depth)
@@ -335,6 +335,6 @@ public fun gen(w: Appendable, funcName: String, kernel: Kernel) {
     }
     w.append("}\n")
     if (depth > 0) {
-        throw UgError.Msg("unmatched Range")
+        UgError.Msg("unmatched Range").raise()
     }
 }

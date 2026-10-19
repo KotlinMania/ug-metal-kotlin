@@ -21,9 +21,15 @@ This is an **in-progress port**. The goal is feature parity with the upstream Ru
 
 ```kotlin
 dependencies {
-    implementation("io.github.kotlinmania:ug-metal-kotlin:0.1.0")
+    implementation("io.github.kotlinmania:ug-metal-kotlin:0.1.1")
 }
 ```
+
+### Typed buffer access
+
+`Device.zeros<T>()` and `Device.sliceFromValues()` retain the scalar type when reading buffer contents. Supported scalars are `Float`, `Double`, `Int`, `Long`, `Short`, `Byte`, `F16`, and `BF16`. Each `toVec()` reads the current buffer and returns a copy. A custom `SliceReader<T>` supplies decoding for other buffer layouts.
+
+Builds resolve the published UG and Candle Metal Kernels dependencies from Maven Central.
 
 ### Building
 
@@ -44,7 +50,7 @@ dependencies {
 
 ### Porting guidelines
 
-See [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) for translator discipline, port-lint header convention, and Rust → Kotlin idiom mapping.
+See [AGENTS.md](AGENTS.md) for translator discipline, port-lint header convention, and Rust → Kotlin idiom mapping.
 
 ### License
 
